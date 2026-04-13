@@ -47,3 +47,9 @@ def test_make_client_passes_base_url_and_api_key(monkeypatch):
     monkeypatch.setattr(inference, "OpenAI", FakeOpenAI)
     inference.make_client({"model": "m", "base_url": "http://x/v1", "api_key": "k"})
     assert captured == {"base_url": "http://x/v1", "api_key": "k"}
+
+
+def test_picker_style_is_a_questionary_style():
+    import questionary
+
+    assert isinstance(inference._picker_style, questionary.Style)

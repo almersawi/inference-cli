@@ -32,6 +32,16 @@ from rich.text import Text
 
 _console = Console()
 
+import questionary as _questionary
+
+_picker_style = _questionary.Style([
+    ("qmark", "fg:#00afff bold"),
+    ("question", "bold"),
+    ("pointer", "fg:#00afff bold"),
+    ("highlighted", "fg:#00afff bold"),
+    ("selected", "fg:#00afff"),
+])
+
 
 class _LiveMarkdownOut:
     """TextIO-duck-typed adapter that renders accumulated writes as
@@ -396,7 +406,9 @@ def pick_model(
     if _select is None:
         import questionary
         def _select(message: str, choices: list[str]) -> str:
-            return questionary.select(message, choices=choices).ask()
+            return questionary.select(
+                message, choices=choices, style=_picker_style
+            ).ask()
 
     labels = [m["model"] for m in models] + [_ADD_LABEL]
     choice = _select("Select a model:", labels)

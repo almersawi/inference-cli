@@ -58,3 +58,43 @@ def test_handle_system_replaces_when_present():
     new_history = inference.handle_system(history, "new")
     assert new_history[0]["content"] == "new"
     assert len(new_history) == 2
+
+
+def test_handle_add_writes_new_model_to_yaml(tmp_path):
+    config_path = tmp_path / "models.yaml"
+    answers = iter([
+        ("model", "new-model"),
+        ("base_url", "http://x/v1"),
+        ("api_key", "k"),
+    ])
+
+    def prompt(field: str) -> str:
+        name, value = next(answers)
+        assert name == field
+        return value
+
+    new_model = inference.handle_add(prompt=prompt, config_path=config_path)
+    assert new_model == {
+        "model": "new-model",
+        "base_url": "http://x/v1",
+        "api_key": "k",
+    }
+    reloaded = inference.load_config(config_path)
+    assert reloaded[-1]["model"] == "new-model"
+
+
+def test_handle_add_appends_to_existing_yaml(tmp_path):
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: existing\n"
+        "    base_url: http://a/v1\n"
+        "    api_key: k\n"
+    )
+
+    def prompt(field: str) -> str:
+        return {"model": "new", "base_url": "http://b/v1", "api_key": "k2"}[field]
+
+    inference.handle_add(prompt=prompt, config_path=config_path)
+    reloaded = inference.load_config(config_path)
+    assert [m["model"] for m in reloaded] == ["existing", "new"]

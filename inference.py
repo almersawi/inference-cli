@@ -17,7 +17,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Callable, TextIO
 
 import yaml
 
@@ -233,6 +233,22 @@ def handle_system(history: list[dict[str, Any]], content: str) -> list[dict[str,
     if history and history[0].get("role") == "system":
         return [new_msg, *history[1:]]
     return [new_msg, *history]
+
+
+def handle_add(
+    *,
+    prompt: Callable[[str], str],
+    config_path: str | os.PathLike[str],
+) -> dict[str, Any]:
+    """Collect the three required fields via `prompt(field_name)` and append to yaml.
+    Returns the new model dict."""
+    new_model = {
+        "model": prompt("model").strip(),
+        "base_url": prompt("base_url").strip(),
+        "api_key": prompt("api_key").strip(),
+    }
+    save_config(config_path, new_model)
+    return new_model
 
 
 def main() -> None:

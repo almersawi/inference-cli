@@ -462,9 +462,7 @@ def main() -> None:
     disable_thinking = _ask_disable_thinking()
     history: list[dict[str, Any]] = []
 
-    print(f"Chatting with {current['model']}. Type /exit to quit.")
-    if disable_thinking:
-        print("thinking: disabled")
+    _welcome_banner(_console, current["model"], disable_thinking=disable_thinking)
     while True:
         try:
             line = input("You ▸ ")
@@ -480,44 +478,42 @@ def main() -> None:
                     return
                 if name == "clear":
                     history = handle_clear(history)
-                    print("✓ History cleared.")
+                    _success(_console, "History cleared.")
                     continue
                 if name == "system":
                     content = args or _interactive_prompt("system prompt").strip()
                     if content:
                         history = handle_system(history, content)
-                        print("✓ System prompt set.")
+                        _success(_console, "System prompt set.")
                     continue
                 if name == "model":
                     current = _select_or_bootstrap(config_path)
                     client = make_client(current)
                     disable_thinking = _ask_disable_thinking()
                     history = []
-                    print(f"Switched to {current['model']}. History cleared.")
-                    if disable_thinking:
-                        print("thinking: disabled")
+                    _welcome_banner(_console, current["model"], disable_thinking=disable_thinking)
+                    _info(_console, "History cleared.")
                     continue
                 if name == "add":
                     new = handle_add(prompt=_interactive_prompt, config_path=config_path)
-                    print(f"✓ Added {new['model']} to {config_path}")
+                    _success(_console, f"Added {new['model']} to {config_path}")
                     ans = _interactive_prompt("switch to it now? (y/N)").strip().lower()
                     if ans in ("y", "yes"):
                         current = {**new, "api_key": _expand_env(new["api_key"])}
                         client = make_client(current)
                         disable_thinking = _ask_disable_thinking()
                         history = []
-                        print(f"Switched to {current['model']}. History cleared.")
-                        if disable_thinking:
-                            print("thinking: disabled")
+                        _welcome_banner(_console, current["model"], disable_thinking=disable_thinking)
+                        _info(_console, "History cleared.")
                     continue
                 if name == "remove":
                     try:
                         models = load_config(config_path)
                     except ConfigError as e:
-                        print(f"[error] {e}")
+                        _error(_console, str(e))
                         continue
                     if len(models) <= 1:
-                        print("[error] refusing to remove the last model in config")
+                        _error(_console, "refusing to remove the last model in config")
                         continue
                     choice = pick_model(models)
                     if choice == ADD_SENTINEL:
@@ -527,51 +523,53 @@ def main() -> None:
                         f"remove '{target_name}' from {config_path}? (y/N)"
                     ).strip().lower()
                     if confirm not in ("y", "yes"):
-                        print("cancelled.")
+                        _cancelled(_console)
                         continue
                     try:
                         handle_remove(model_name=target_name, config_path=config_path)
                     except ConfigError as e:
-                        print(f"[error] {e}")
+                        _error(_console, str(e))
                         continue
-                    print(f"✓ Removed {target_name}.")
+                    _success(_console, f"Removed {target_name}.")
                     if target_name == current["model"]:
-                        print("That was the active model. Returning to picker.")
+                        _info(_console, "That was the active model. Returning to picker.")
                         current = _select_or_bootstrap(config_path)
                         client = make_client(current)
                         disable_thinking = _ask_disable_thinking()
                         history = []
-                        if disable_thinking:
-                            print("thinking: disabled")
+                        _welcome_banner(_console, current["model"], disable_thinking=disable_thinking)
                     continue
                 # unknown
-                print("Commands: /clear /model /system /add /remove /exit")
+                _help_line(_console)
             except KeyboardInterrupt:
-                print("\n[cancelled]")
+                print()  # newline to clear the half-typed prompt
+                _cancelled(_console)
             continue
 
         if not line.strip():
             continue
 
         history.append({"role": "user", "content": line})
-        print("Assistant ▸ ", end="", flush=True)
+        _console.print(Text("Assistant ▸", style="bold green"))
         try:
-            text, metrics = chat_turn(
-                client=client,
-                model=current["model"],
-                history=history,
-                out=sys.stdout,
-                disable_thinking=disable_thinking,
-            )
+            with _LiveMarkdownOut(_console) as live_out:
+                text, metrics = chat_turn(
+                    client=client,
+                    model=current["model"],
+                    history=history,
+                    out=live_out,
+                    disable_thinking=disable_thinking,
+                )
         except KeyboardInterrupt:
-            print("\n[interrupted]")
+            print()
+            _interrupted(_console)
             continue
         except Exception as e:  # API errors, connection errors
             history.pop()  # roll back the user turn
-            print(f"\n[error] {e}")
+            print()  # ensure we start on a fresh line after partial stream
+            _error(_console, str(e))
             continue
-        print()  # newline after streamed content
-        print(format_metrics(metrics))
+        _console.print(format_metrics(metrics), style="dim")
         history.append({"role": "assistant", "content": text})
 
 

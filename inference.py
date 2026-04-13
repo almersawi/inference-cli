@@ -62,6 +62,33 @@ def load_config(path: str | os.PathLike[str]) -> list[dict[str, Any]]:
     return models
 
 
+def save_config(path: str | os.PathLike[str], new_model: dict[str, Any]) -> None:
+    for field in _REQUIRED_FIELDS:
+        if field not in new_model or new_model[field] in (None, ""):
+            raise ConfigError(f"new model missing required field '{field}'")
+    p = Path(path)
+    if p.exists() and p.read_text().strip():
+        try:
+            data = yaml.safe_load(p.read_text()) or {}
+        except yaml.YAMLError as e:
+            raise ConfigError(f"invalid YAML in {p}: {e}") from e
+        if not isinstance(data, dict):
+            data = {}
+        models = data.get("models") or []
+        if not isinstance(models, list):
+            raise ConfigError(f"{p}: 'models' must be a list")
+    else:
+        models = []
+    models.append(
+        {
+            "model": new_model["model"],
+            "base_url": new_model["base_url"],
+            "api_key": new_model["api_key"],
+        }
+    )
+    p.write_text(yaml.safe_dump({"models": models}, sort_keys=False))
+
+
 def main() -> None:
     print("inference.py: bootstrap")
 

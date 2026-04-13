@@ -77,3 +77,34 @@ def test_load_config_missing_required_field_raises(tmp_path):
     with pytest.raises(inference.ConfigError) as exc:
         inference.load_config(path)
     assert "api_key" in str(exc.value)
+
+
+def test_save_config_appends_to_existing(tmp_path):
+    path = write_yaml(tmp_path, """
+        models:
+          - model: m1
+            base_url: http://a/v1
+            api_key: k1
+    """)
+    inference.save_config(
+        path,
+        {"model": "m2", "base_url": "http://b/v1", "api_key": "k2"},
+    )
+    reloaded = inference.load_config(path)
+    assert [m["model"] for m in reloaded] == ["m1", "m2"]
+
+
+def test_save_config_creates_file_if_missing(tmp_path):
+    path = tmp_path / "models.yaml"
+    inference.save_config(
+        path,
+        {"model": "m1", "base_url": "http://a/v1", "api_key": "k1"},
+    )
+    reloaded = inference.load_config(path)
+    assert reloaded[0]["model"] == "m1"
+
+
+def test_save_config_rejects_missing_fields(tmp_path):
+    path = tmp_path / "models.yaml"
+    with pytest.raises(inference.ConfigError):
+        inference.save_config(path, {"model": "m1", "base_url": "http://a/v1"})

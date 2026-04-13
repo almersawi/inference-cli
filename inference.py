@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 import yaml
+from openai import OpenAI
 
 
 class ConfigError(Exception):
@@ -284,6 +285,36 @@ def handle_remove(
     remaining = [m for m in models if m.get("model") != model_name]
     write_config(config_path, remaining)
     return remaining
+
+
+ADD_SENTINEL = "__add__"
+_ADD_LABEL = "+ add new model"
+
+
+def pick_model(
+    models: list[dict[str, Any]],
+    *,
+    _select: Callable[[str, list[str]], str] | None = None,
+) -> dict[str, Any] | str:
+    """Show the arrow-key picker. Returns the selected model dict, or
+    ADD_SENTINEL ('__add__') if the user chose to add a new model."""
+    if _select is None:
+        import questionary
+        def _select(message: str, choices: list[str]) -> str:
+            return questionary.select(message, choices=choices).ask()
+
+    labels = [m["model"] for m in models] + [_ADD_LABEL]
+    choice = _select("Select a model:", labels)
+    if choice is None or choice == _ADD_LABEL:
+        return ADD_SENTINEL
+    for m in models:
+        if m["model"] == choice:
+            return m
+    return ADD_SENTINEL
+
+
+def make_client(model_entry: dict[str, Any]) -> Any:
+    return OpenAI(base_url=model_entry["base_url"], api_key=model_entry["api_key"])
 
 
 def main() -> None:

@@ -204,6 +204,37 @@ def chat_turn(
     return text, metrics
 
 
+KNOWN_COMMANDS = {"clear", "exit", "model", "system", "add", "remove"}
+
+
+def parse_command(line: str) -> tuple[str, str] | None:
+    """Returns (command_name, args) for known commands,
+    ('__unknown__', raw_word) for unknown /commands,
+    or None for non-command input."""
+    if not line or not line.startswith("/"):
+        return None
+    body = line[1:].strip()
+    if not body:
+        return ("__unknown__", "")
+    parts = body.split(maxsplit=1)
+    name = parts[0].lower()
+    args = parts[1] if len(parts) > 1 else ""
+    if name in KNOWN_COMMANDS:
+        return (name, args)
+    return ("__unknown__", parts[0])
+
+
+def handle_clear(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [m for m in history if m.get("role") == "system"]
+
+
+def handle_system(history: list[dict[str, Any]], content: str) -> list[dict[str, Any]]:
+    new_msg = {"role": "system", "content": content}
+    if history and history[0].get("role") == "system":
+        return [new_msg, *history[1:]]
+    return [new_msg, *history]
+
+
 def main() -> None:
     print("inference.py: bootstrap")
 

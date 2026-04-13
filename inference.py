@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +88,27 @@ def save_config(path: str | os.PathLike[str], new_model: dict[str, Any]) -> None
         }
     )
     p.write_text(yaml.safe_dump({"models": models}, sort_keys=False))
+
+
+@dataclass
+class Metrics:
+    ttft_seconds: float
+    generation_seconds: float
+    prompt_tokens: int
+    completion_tokens: int
+    prompt_tokens_estimated: bool
+    completion_tokens_estimated: bool
+
+
+def format_metrics(m: Metrics) -> str:
+    ttft_ms = int(round(m.ttft_seconds * 1000))
+    if m.generation_seconds > 0:
+        tps = m.completion_tokens / m.generation_seconds
+    else:
+        tps = 0.0
+    in_str = f"{m.prompt_tokens}{'*' if m.prompt_tokens_estimated else ''}"
+    out_str = f"{m.completion_tokens}{'*' if m.completion_tokens_estimated else ''}"
+    return f"⏱ TTFT: {ttft_ms}ms · {tps:.1f} tok/s · in: {in_str} · out: {out_str}"
 
 
 def main() -> None:

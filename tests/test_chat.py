@@ -217,3 +217,43 @@ def test_main_add_then_switch_expands_env_var_in_api_key(
     raw = config_path.read_text()
     assert "${MY_KEY}" in raw
     assert "expanded-secret" not in raw
+
+
+def test_chat_turn_passes_extra_body_when_disable_thinking_true(
+    fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    chunks = [
+        make_chunk_fn(content="ok"),
+        make_chunk_fn(usage=fake_usage_cls(prompt_tokens=1, completion_tokens=1)),
+    ]
+    client = fake_client_factory(chunks)
+    inference.chat_turn(
+        client=client,
+        model="m",
+        history=[{"role": "user", "content": "x"}],
+        out=io.StringIO(),
+        disable_thinking=True,
+    )
+    kwargs = client.chat.completions.last_kwargs
+    assert kwargs["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+
+
+def test_chat_turn_omits_extra_body_when_disable_thinking_false(
+    fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    chunks = [
+        make_chunk_fn(content="ok"),
+        make_chunk_fn(usage=fake_usage_cls(prompt_tokens=1, completion_tokens=1)),
+    ]
+    client = fake_client_factory(chunks)
+    inference.chat_turn(
+        client=client,
+        model="m",
+        history=[{"role": "user", "content": "x"}],
+        out=io.StringIO(),
+        disable_thinking=False,
+    )
+    kwargs = client.chat.completions.last_kwargs
+    assert "extra_body" not in kwargs

@@ -154,6 +154,7 @@ def chat_turn(
     model: str,
     history: list[dict[str, Any]],
     out: TextIO,
+    disable_thinking: bool = False,
 ) -> tuple[str, Metrics]:
     """Run one streaming chat completion. Writes content to `out` as it arrives.
     Returns the assembled assistant text and a populated Metrics."""
@@ -163,12 +164,17 @@ def chat_turn(
     server_prompt: int | None = None
     server_completion: int | None = None
 
-    stream = client.chat.completions.create(
-        model=model,
-        messages=history,
-        stream=True,
-        stream_options={"include_usage": True},
-    )
+    create_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": history,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if disable_thinking:
+        create_kwargs["extra_body"] = {
+            "chat_template_kwargs": {"enable_thinking": False}
+        }
+    stream = client.chat.completions.create(**create_kwargs)
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None) is not None:

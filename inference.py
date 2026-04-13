@@ -5,6 +5,7 @@
 #     "openai>=1.40",
 #     "pyyaml>=6.0",
 #     "questionary>=2.0",
+#     "rich>=13.7",
 #     "tiktoken>=0.7",
 # ]
 # ///
@@ -22,6 +23,53 @@ from typing import Any, Callable, TextIO
 
 import yaml
 from openai import OpenAI
+from rich.console import Console, Group
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.text import Text
+
+
+_console = Console()
+
+
+class _LiveMarkdownOut:
+    """TextIO-duck-typed adapter that renders accumulated writes as
+    Markdown via rich.live.Live. Starts the Live region lazily on the
+    first non-empty write so an empty response renders nothing."""
+
+    def __init__(self, console: Console) -> None:
+        self._console = console
+        self._buffer: list[str] = []
+        self._live: Live | None = None
+
+    def __enter__(self) -> "_LiveMarkdownOut":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._live is not None:
+            self._live.stop()
+            self._live = None
+
+    def write(self, s: str) -> int:
+        if not s:
+            return 0
+        self._buffer.append(s)
+        renderable = Markdown("".join(self._buffer))
+        if self._live is None:
+            self._live = Live(
+                renderable,
+                console=self._console,
+                refresh_per_second=10,
+                vertical_overflow="visible",
+            )
+            self._live.start()
+        else:
+            self._live.update(renderable)
+        return len(s)
+
+    def flush(self) -> None:
+        pass
 
 
 class ConfigError(Exception):

@@ -579,7 +579,15 @@ def main() -> None:
         except Exception as e:  # API errors, connection errors
             history.pop()  # roll back the user turn
             print()  # ensure we start on a fresh line after partial stream
-            _error(_console, str(e))
+            # Surface the root cause — openai.APIConnectionError's default
+            # str() is just "Connection error." which hides the underlying
+            # httpx exception (DNS, timeout, refused, TLS, etc.).
+            parts = [f"{type(e).__name__}: {e}"]
+            cause = e.__cause__ or e.__context__
+            while cause is not None:
+                parts.append(f"  caused by {type(cause).__name__}: {cause}")
+                cause = cause.__cause__ or cause.__context__
+            _error(_console, "\n".join(parts))
             continue
         _console.print(format_metrics(metrics), style="dim")
         history.append({"role": "assistant", "content": text})

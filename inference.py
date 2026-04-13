@@ -371,9 +371,12 @@ def main() -> None:
     config_path = _config_path()
     current = _select_or_bootstrap(config_path)
     client = make_client(current)
+    disable_thinking = _ask_disable_thinking()
     history: list[dict[str, Any]] = []
 
     print(f"Chatting with {current['model']}. Type /exit to quit.")
+    if disable_thinking:
+        print("thinking: disabled")
     while True:
         try:
             line = input("You ▸ ")
@@ -400,8 +403,11 @@ def main() -> None:
                 if name == "model":
                     current = _select_or_bootstrap(config_path)
                     client = make_client(current)
+                    disable_thinking = _ask_disable_thinking()
                     history = []
                     print(f"Switched to {current['model']}. History cleared.")
+                    if disable_thinking:
+                        print("thinking: disabled")
                     continue
                 if name == "add":
                     new = handle_add(prompt=_interactive_prompt, config_path=config_path)
@@ -410,8 +416,11 @@ def main() -> None:
                     if ans in ("y", "yes"):
                         current = {**new, "api_key": _expand_env(new["api_key"])}
                         client = make_client(current)
+                        disable_thinking = _ask_disable_thinking()
                         history = []
                         print(f"Switched to {current['model']}. History cleared.")
+                        if disable_thinking:
+                            print("thinking: disabled")
                     continue
                 if name == "remove":
                     try:
@@ -442,7 +451,10 @@ def main() -> None:
                         print("That was the active model. Returning to picker.")
                         current = _select_or_bootstrap(config_path)
                         client = make_client(current)
+                        disable_thinking = _ask_disable_thinking()
                         history = []
+                        if disable_thinking:
+                            print("thinking: disabled")
                     continue
                 # unknown
                 print("Commands: /clear /model /system /add /remove /exit")
@@ -457,7 +469,11 @@ def main() -> None:
         print("Assistant ▸ ", end="", flush=True)
         try:
             text, metrics = chat_turn(
-                client=client, model=current["model"], history=history, out=sys.stdout,
+                client=client,
+                model=current["model"],
+                history=history,
+                out=sys.stdout,
+                disable_thinking=disable_thinking,
             )
         except KeyboardInterrupt:
             print("\n[interrupted]")

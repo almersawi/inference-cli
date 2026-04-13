@@ -116,6 +116,7 @@ def test_main_runs_one_chat_turn_then_exits(
 
     # Auto-pick the first model.
     monkeypatch.setattr(inference, "pick_model", lambda models, **kw: models[0])
+    monkeypatch.setattr(inference, "_ask_disable_thinking", lambda: False)
 
     # Drive the REPL: one user message, then /exit.
     inputs = iter(["hello there", "/exit"])
@@ -143,6 +144,7 @@ def test_main_ctrl_c_during_interactive_prompt_cancels_command_only(
     )
     monkeypatch.setenv("INFERENCE_MODELS_CONFIG", str(config_path))
     monkeypatch.setattr(inference, "pick_model", lambda models, **kw: models[0])
+    monkeypatch.setattr(inference, "_ask_disable_thinking", lambda: False)
 
     # `_interactive_prompt` will be called from the /add handler; raise KeyboardInterrupt.
     def cancelling_prompt(field):
@@ -191,6 +193,7 @@ def test_main_add_then_switch_expands_env_var_in_api_key(
         "${MY_KEY}",      # api_key as env var reference
         "y",              # switch to it now?
     ])
+    monkeypatch.setattr(inference, "_ask_disable_thinking", lambda: False)
     monkeypatch.setattr(
         inference, "_interactive_prompt", lambda field: next(interactive_answers)
     )
@@ -257,3 +260,81 @@ def test_chat_turn_omits_extra_body_when_disable_thinking_false(
     )
     kwargs = client.chat.completions.last_kwargs
     assert "extra_body" not in kwargs
+
+
+def test_main_disable_thinking_yes_passes_extra_body_to_chat_turn(
+    monkeypatch, tmp_path, capsys, fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    """Integration: when the post-pick prompt answers 'y', every chat turn
+    sends extra_body={"chat_template_kwargs": {"enable_thinking": False}}."""
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: m1\n"
+        "    base_url: http://a/v1\n"
+        "    api_key: k\n"
+    )
+    monkeypatch.setenv("INFERENCE_MODELS_CONFIG", str(config_path))
+
+    chunks = [
+        make_chunk_fn(content="ok"),
+        make_chunk_fn(usage=fake_usage_cls(prompt_tokens=1, completion_tokens=1)),
+    ]
+    captured_client = fake_client_factory(chunks)
+    monkeypatch.setattr(
+        inference, "make_client", lambda entry: captured_client
+    )
+    monkeypatch.setattr(inference, "pick_model", lambda models, **kw: models[0])
+
+    # Answer 'y' to the disable-thinking prompt.
+    monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "y")
+
+    inputs = iter(["hi", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+
+    inference.main()
+
+    kwargs = captured_client.chat.completions.last_kwargs
+    assert kwargs["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+    captured_out = capsys.readouterr().out
+    assert "thinking: disabled" in captured_out
+
+
+def test_main_disable_thinking_no_omits_extra_body(
+    monkeypatch, tmp_path, capsys, fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    """Integration: when the post-pick prompt answers 'n' (or empty), no
+    extra_body is sent and no 'thinking: disabled' line appears."""
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: m1\n"
+        "    base_url: http://a/v1\n"
+        "    api_key: k\n"
+    )
+    monkeypatch.setenv("INFERENCE_MODELS_CONFIG", str(config_path))
+
+    chunks = [
+        make_chunk_fn(content="ok"),
+        make_chunk_fn(usage=fake_usage_cls(prompt_tokens=1, completion_tokens=1)),
+    ]
+    captured_client = fake_client_factory(chunks)
+    monkeypatch.setattr(
+        inference, "make_client", lambda entry: captured_client
+    )
+    monkeypatch.setattr(inference, "pick_model", lambda models, **kw: models[0])
+
+    # Answer empty (default N) to the disable-thinking prompt.
+    monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "")
+
+    inputs = iter(["hi", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+
+    inference.main()
+
+    kwargs = captured_client.chat.completions.last_kwargs
+    assert "extra_body" not in kwargs
+    captured_out = capsys.readouterr().out
+    assert "thinking: disabled" not in captured_out

@@ -153,3 +153,28 @@ def test_handle_remove_preserves_env_var_syntax_in_api_key(tmp_path, monkeypatch
     raw = config_path.read_text()
     assert "${MY_KEY}" in raw
     assert "super-secret-value" not in raw
+
+
+def test_ask_disable_thinking_returns_true_for_y(monkeypatch):
+    monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "y")
+    assert inference._ask_disable_thinking() is True
+
+
+def test_ask_disable_thinking_returns_true_for_yes_case_insensitive(monkeypatch):
+    monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "YES")
+    assert inference._ask_disable_thinking() is True
+
+
+def test_ask_disable_thinking_returns_false_for_empty(monkeypatch):
+    monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "")
+    assert inference._ask_disable_thinking() is False
+
+
+def test_ask_disable_thinking_returns_false_for_n(monkeypatch):
+    monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "n")
+    assert inference._ask_disable_thinking() is False
+
+
+def test_ask_disable_thinking_returns_false_for_anything_else(monkeypatch):
+    monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "garbage")
+    assert inference._ask_disable_thinking() is False

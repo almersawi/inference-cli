@@ -339,6 +339,15 @@ def _interactive_prompt(field: str) -> str:
     return answer
 
 
+def _ask_disable_thinking() -> bool:
+    """Prompt 'Disable thinking for this session? (y/N)'. Returns True only for
+    y/yes (case-insensitive). Empty input, n, no, or anything else returns False."""
+    answer = _interactive_prompt(
+        "Disable thinking for this session? (y/N)"
+    ).strip().lower()
+    return answer in ("y", "yes")
+
+
 def _select_or_bootstrap(config_path: Path) -> dict[str, Any]:
     """Load config, run picker. If empty or user picks +add, run /add and re-pick."""
     while True:

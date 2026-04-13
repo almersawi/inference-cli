@@ -368,68 +368,71 @@ def main() -> None:
 
         cmd = parse_command(line)
         if cmd is not None:
-            name, args = cmd
-            if name == "exit":
-                return
-            if name == "clear":
-                history = handle_clear(history)
-                print("✓ History cleared.")
-                continue
-            if name == "system":
-                content = args or _interactive_prompt("system prompt").strip()
-                if content:
-                    history = handle_system(history, content)
-                    print("✓ System prompt set.")
-                continue
-            if name == "model":
-                current = _select_or_bootstrap(config_path)
-                client = make_client(current)
-                history = []
-                print(f"Switched to {current['model']}. History cleared.")
-                continue
-            if name == "add":
-                new = handle_add(prompt=_interactive_prompt, config_path=config_path)
-                print(f"✓ Added {new['model']} to {config_path}")
-                ans = _interactive_prompt("switch to it now? (y/N)").strip().lower()
-                if ans in ("y", "yes"):
-                    current = new
-                    client = make_client(current)
-                    history = []
-                    print(f"Switched to {current['model']}. History cleared.")
-                continue
-            if name == "remove":
-                try:
-                    models = load_config(config_path)
-                except ConfigError as e:
-                    print(f"[error] {e}")
+            try:
+                name, args = cmd
+                if name == "exit":
+                    return
+                if name == "clear":
+                    history = handle_clear(history)
+                    print("✓ History cleared.")
                     continue
-                if len(models) <= 1:
-                    print("[error] refusing to remove the last model in config")
+                if name == "system":
+                    content = args or _interactive_prompt("system prompt").strip()
+                    if content:
+                        history = handle_system(history, content)
+                        print("✓ System prompt set.")
                     continue
-                choice = pick_model(models)
-                if choice == ADD_SENTINEL:
-                    continue  # user picked '+ add new model' — treat as cancel
-                target_name = choice["model"]
-                confirm = _interactive_prompt(
-                    f"remove '{target_name}' from {config_path}? (y/N)"
-                ).strip().lower()
-                if confirm not in ("y", "yes"):
-                    print("cancelled.")
-                    continue
-                try:
-                    handle_remove(model_name=target_name, config_path=config_path)
-                except ConfigError as e:
-                    print(f"[error] {e}")
-                    continue
-                print(f"✓ Removed {target_name}.")
-                if target_name == current["model"]:
-                    print("That was the active model. Returning to picker.")
+                if name == "model":
                     current = _select_or_bootstrap(config_path)
                     client = make_client(current)
                     history = []
-                continue
-            # unknown
-            print("Commands: /clear /model /system /add /remove /exit")
+                    print(f"Switched to {current['model']}. History cleared.")
+                    continue
+                if name == "add":
+                    new = handle_add(prompt=_interactive_prompt, config_path=config_path)
+                    print(f"✓ Added {new['model']} to {config_path}")
+                    ans = _interactive_prompt("switch to it now? (y/N)").strip().lower()
+                    if ans in ("y", "yes"):
+                        current = new
+                        client = make_client(current)
+                        history = []
+                        print(f"Switched to {current['model']}. History cleared.")
+                    continue
+                if name == "remove":
+                    try:
+                        models = load_config(config_path)
+                    except ConfigError as e:
+                        print(f"[error] {e}")
+                        continue
+                    if len(models) <= 1:
+                        print("[error] refusing to remove the last model in config")
+                        continue
+                    choice = pick_model(models)
+                    if choice == ADD_SENTINEL:
+                        continue  # user picked '+ add new model' — treat as cancel
+                    target_name = choice["model"]
+                    confirm = _interactive_prompt(
+                        f"remove '{target_name}' from {config_path}? (y/N)"
+                    ).strip().lower()
+                    if confirm not in ("y", "yes"):
+                        print("cancelled.")
+                        continue
+                    try:
+                        handle_remove(model_name=target_name, config_path=config_path)
+                    except ConfigError as e:
+                        print(f"[error] {e}")
+                        continue
+                    print(f"✓ Removed {target_name}.")
+                    if target_name == current["model"]:
+                        print("That was the active model. Returning to picker.")
+                        current = _select_or_bootstrap(config_path)
+                        client = make_client(current)
+                        history = []
+                    continue
+                # unknown
+                print("Commands: /clear /model /system /add /remove /exit")
+            except KeyboardInterrupt:
+                print("\n[cancelled]")
             continue
 
         if not line.strip():

@@ -127,3 +127,34 @@ def test_main_runs_one_chat_turn_then_exits(
     assert "hi!" in captured
     assert "TTFT:" in captured
     assert "tok/s" in captured
+
+
+def test_main_ctrl_c_during_interactive_prompt_cancels_command_only(
+    monkeypatch, tmp_path, capsys
+):
+    """Regression: Ctrl-C inside /add (or similar) must cancel that command,
+    not terminate the session."""
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: m1\n"
+        "    base_url: http://a/v1\n"
+        "    api_key: k\n"
+    )
+    monkeypatch.setenv("INFERENCE_MODELS_CONFIG", str(config_path))
+    monkeypatch.setattr(inference, "pick_model", lambda models, **kw: models[0])
+
+    # `_interactive_prompt` will be called from the /add handler; raise KeyboardInterrupt.
+    def cancelling_prompt(field):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(inference, "_interactive_prompt", cancelling_prompt)
+
+    # Drive the REPL: type /add (will trigger the cancelling prompt), then /exit.
+    inputs = iter(["/add", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+
+    inference.main()  # should NOT raise
+
+    captured = capsys.readouterr().out
+    assert "[cancelled]" in captured

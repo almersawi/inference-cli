@@ -46,3 +46,66 @@ def test_live_markdown_out_does_nothing_when_no_writes():
         pass
     # No panic, no output — exit must handle the never-started case.
     assert console.export_text() == ""
+
+
+def test_welcome_banner_contains_model_name():
+    console = make_record_console()
+    inference._welcome_banner(console, "my-model", disable_thinking=False)
+    out = console.export_text()
+    assert "my-model" in out
+    assert "inference" in out  # panel title
+    assert "thinking: disabled" not in out  # omitted when flag off
+
+
+def test_welcome_banner_shows_thinking_disabled_when_on():
+    console = make_record_console()
+    inference._welcome_banner(console, "my-model", disable_thinking=True)
+    out = console.export_text()
+    assert "thinking: disabled" in out
+
+
+def test_success_prints_green_check():
+    console = make_record_console()
+    inference._success(console, "History cleared.")
+    out = console.export_text()
+    assert "✓ History cleared." in out
+
+
+def test_error_prints_bracketed_prefix():
+    console = make_record_console()
+    inference._error(console, "boom")
+    out = console.export_text()
+    assert "[error] boom" in out
+
+
+def test_cancelled_prints_yellow_bracket():
+    console = make_record_console()
+    inference._cancelled(console)
+    out = console.export_text()
+    assert "[cancelled]" in out
+
+
+def test_interrupted_prints_yellow_bracket():
+    console = make_record_console()
+    inference._interrupted(console)
+    out = console.export_text()
+    assert "[interrupted]" in out
+
+
+def test_info_prints_text():
+    console = make_record_console()
+    inference._info(console, "Switched to m.")
+    out = console.export_text()
+    assert "Switched to m." in out
+
+
+def test_help_line_prints_command_list():
+    console = make_record_console()
+    inference._help_line(console)
+    out = console.export_text()
+    assert "/clear" in out
+    assert "/model" in out
+    assert "/system" in out
+    assert "/add" in out
+    assert "/remove" in out
+    assert "/exit" in out

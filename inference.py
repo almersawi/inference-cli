@@ -72,6 +72,46 @@ class _LiveMarkdownOut:
         pass
 
 
+def _welcome_banner(console: Console, model: str, *, disable_thinking: bool) -> None:
+    """Render the 'Chatting with <model>' welcome panel. Shown at every
+    model-switch site. When thinking is disabled, adds a yellow status line."""
+    body = Text()
+    body.append("Chatting with ")
+    body.append(model, style="bold cyan")
+    if disable_thinking:
+        body.append("\nthinking: disabled", style="yellow")
+    console.print(Panel(body, title="inference", border_style="cyan", expand=False))
+
+
+def _success(console: Console, message: str) -> None:
+    console.print(f"✓ {message}", style="green")
+
+
+def _error(console: Console, message: str) -> None:
+    text = Text(f"[error] {message}", style="red")
+    console.print(text)
+
+
+def _cancelled(console: Console) -> None:
+    text = Text("[cancelled]", style="yellow")
+    console.print(text)
+
+
+def _interrupted(console: Console) -> None:
+    text = Text("[interrupted]", style="yellow")
+    console.print(text)
+
+
+def _info(console: Console, message: str) -> None:
+    console.print(message, style="cyan")
+
+
+def _help_line(console: Console) -> None:
+    console.print(
+        "Commands: /clear /model /system /add /remove /exit", style="dim"
+    )
+
+
 class ConfigError(Exception):
     """Raised for problems loading or validating models.yaml."""
 

@@ -64,8 +64,31 @@ def load_config(path: str | os.PathLike[str]) -> list[dict[str, Any]]:
     return models
 
 
+def _read_raw_models(path: str | os.PathLike[str]) -> list[dict[str, Any]]:
+    """Load models.yaml WITHOUT expanding ${ENV_VAR} references in api_key.
+    Returns [] for missing/empty files. Used by writers that round-trip the
+    file so env-var references are preserved on disk."""
+    p = Path(path)
+    if not p.exists():
+        return []
+    text = p.read_text()
+    if not text.strip():
+        return []
+    try:
+        data = yaml.safe_load(text) or {}
+    except yaml.YAMLError as e:
+        raise ConfigError(f"invalid YAML in {p}: {e}") from e
+    if not isinstance(data, dict):
+        return []
+    models = data.get("models") or []
+    if not isinstance(models, list):
+        raise ConfigError(f"{p}: 'models' must be a list")
+    return models
+
+
 def write_config(path: str | os.PathLike[str], models: list[dict[str, Any]]) -> None:
-    """Overwrite models.yaml with the given list of model dicts."""
+    """Overwrite models.yaml with the given list of model dicts. Each entry
+    is projected to the three required fields in canonical order."""
     p = Path(path)
     payload = [
         {"model": m["model"], "base_url": m["base_url"], "api_key": m["api_key"]}
@@ -79,21 +102,9 @@ def save_config(path: str | os.PathLike[str], new_model: dict[str, Any]) -> None
     for field in _REQUIRED_FIELDS:
         if field not in new_model or new_model[field] in (None, ""):
             raise ConfigError(f"new model missing required field '{field}'")
-    p = Path(path)
-    if p.exists() and p.read_text().strip():
-        try:
-            data = yaml.safe_load(p.read_text()) or {}
-        except yaml.YAMLError as e:
-            raise ConfigError(f"invalid YAML in {p}: {e}") from e
-        if not isinstance(data, dict):
-            data = {}
-        models = data.get("models") or []
-        if not isinstance(models, list):
-            raise ConfigError(f"{p}: 'models' must be a list")
-    else:
-        models = []
+    models = _read_raw_models(path)
     models.append(new_model)
-    write_config(p, models)
+    write_config(path, models)
 
 
 @dataclass
@@ -262,14 +273,15 @@ def handle_remove(
     config_path: str | os.PathLike[str],
 ) -> list[dict[str, Any]]:
     """Remove the entry whose `model` field matches `model_name`. Returns the
-    remaining list. Raises ConfigError if it would leave zero models or the
-    name is unknown."""
-    models = load_config(config_path)
-    if not any(m["model"] == model_name for m in models):
+    remaining list. Raises ConfigError if the name is unknown or removing
+    would leave zero models. Preserves ${ENV_VAR} references in surviving
+    entries by using `_read_raw_models` (not `load_config`)."""
+    models = _read_raw_models(config_path)
+    if not any(m.get("model") == model_name for m in models):
         raise ConfigError(f"no model named '{model_name}' in config")
     if len(models) <= 1:
         raise ConfigError("refusing to remove the last model in config")
-    remaining = [m for m in models if m["model"] != model_name]
+    remaining = [m for m in models if m.get("model") != model_name]
     write_config(config_path, remaining)
     return remaining
 

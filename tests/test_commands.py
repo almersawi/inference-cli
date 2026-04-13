@@ -137,3 +137,19 @@ def test_handle_remove_unknown_model_raises(tmp_path):
     with pytest.raises(inference.ConfigError) as exc:
         inference.handle_remove(model_name="zz", config_path=config_path)
     assert "zz" in str(exc.value)
+
+
+def test_handle_remove_preserves_env_var_syntax_in_api_key(tmp_path, monkeypatch):
+    """Regression: removing one model must not expand ${ENV_VAR} refs in surviving
+    entries and persist the secret to disk."""
+    monkeypatch.setenv("MY_KEY", "super-secret-value")
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: a\n    base_url: http://x/v1\n    api_key: ${MY_KEY}\n"
+        "  - model: b\n    base_url: http://y/v1\n    api_key: plain\n"
+    )
+    inference.handle_remove(model_name="b", config_path=config_path)
+    raw = config_path.read_text()
+    assert "${MY_KEY}" in raw
+    assert "super-secret-value" not in raw

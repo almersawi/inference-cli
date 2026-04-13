@@ -64,7 +64,18 @@ def load_config(path: str | os.PathLike[str]) -> list[dict[str, Any]]:
     return models
 
 
+def write_config(path: str | os.PathLike[str], models: list[dict[str, Any]]) -> None:
+    """Overwrite models.yaml with the given list of model dicts."""
+    p = Path(path)
+    payload = [
+        {"model": m["model"], "base_url": m["base_url"], "api_key": m["api_key"]}
+        for m in models
+    ]
+    p.write_text(yaml.safe_dump({"models": payload}, sort_keys=False))
+
+
 def save_config(path: str | os.PathLike[str], new_model: dict[str, Any]) -> None:
+    """Append `new_model` to models.yaml. Validates required fields."""
     for field in _REQUIRED_FIELDS:
         if field not in new_model or new_model[field] in (None, ""):
             raise ConfigError(f"new model missing required field '{field}'")
@@ -81,14 +92,8 @@ def save_config(path: str | os.PathLike[str], new_model: dict[str, Any]) -> None
             raise ConfigError(f"{p}: 'models' must be a list")
     else:
         models = []
-    models.append(
-        {
-            "model": new_model["model"],
-            "base_url": new_model["base_url"],
-            "api_key": new_model["api_key"],
-        }
-    )
-    p.write_text(yaml.safe_dump({"models": models}, sort_keys=False))
+    models.append(new_model)
+    write_config(p, models)
 
 
 @dataclass
@@ -249,6 +254,24 @@ def handle_add(
     }
     save_config(config_path, new_model)
     return new_model
+
+
+def handle_remove(
+    *,
+    model_name: str,
+    config_path: str | os.PathLike[str],
+) -> list[dict[str, Any]]:
+    """Remove the entry whose `model` field matches `model_name`. Returns the
+    remaining list. Raises ConfigError if it would leave zero models or the
+    name is unknown."""
+    models = load_config(config_path)
+    if not any(m["model"] == model_name for m in models):
+        raise ConfigError(f"no model named '{model_name}' in config")
+    if len(models) <= 1:
+        raise ConfigError("refusing to remove the last model in config")
+    remaining = [m for m in models if m["model"] != model_name]
+    write_config(config_path, remaining)
+    return remaining
 
 
 def main() -> None:

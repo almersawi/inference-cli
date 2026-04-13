@@ -1,3 +1,5 @@
+import pytest
+
 import inference
 
 
@@ -98,3 +100,40 @@ def test_handle_add_appends_to_existing_yaml(tmp_path):
     inference.handle_add(prompt=prompt, config_path=config_path)
     reloaded = inference.load_config(config_path)
     assert [m["model"] for m in reloaded] == ["existing", "new"]
+
+
+def test_handle_remove_drops_named_model(tmp_path):
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: a\n    base_url: http://x/v1\n    api_key: k\n"
+        "  - model: b\n    base_url: http://y/v1\n    api_key: k\n"
+    )
+    remaining = inference.handle_remove(model_name="a", config_path=config_path)
+    assert [m["model"] for m in remaining] == ["b"]
+    reloaded = inference.load_config(config_path)
+    assert [m["model"] for m in reloaded] == ["b"]
+
+
+def test_handle_remove_refuses_to_remove_last_model(tmp_path):
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: a\n    base_url: http://x/v1\n    api_key: k\n"
+    )
+    with pytest.raises(inference.ConfigError) as exc:
+        inference.handle_remove(model_name="a", config_path=config_path)
+    assert "last" in str(exc.value).lower()
+    assert [m["model"] for m in inference.load_config(config_path)] == ["a"]
+
+
+def test_handle_remove_unknown_model_raises(tmp_path):
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: a\n    base_url: http://x/v1\n    api_key: k\n"
+        "  - model: b\n    base_url: http://y/v1\n    api_key: k\n"
+    )
+    with pytest.raises(inference.ConfigError) as exc:
+        inference.handle_remove(model_name="zz", config_path=config_path)
+    assert "zz" in str(exc.value)

@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 import yaml
 
@@ -109,6 +110,98 @@ def format_metrics(m: Metrics) -> str:
     in_str = f"{m.prompt_tokens}{'*' if m.prompt_tokens_estimated else ''}"
     out_str = f"{m.completion_tokens}{'*' if m.completion_tokens_estimated else ''}"
     return f"⏱ TTFT: {ttft_ms}ms · {tps:.1f} tok/s · in: {in_str} · out: {out_str}"
+
+
+def _estimate_tokens(text: str) -> int:
+    try:
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text))
+    except Exception:
+        # Crude fallback: ~4 chars per token
+        return max(1, len(text) // 4)
+
+
+def _estimate_prompt_tokens(history: list[dict[str, Any]]) -> int:
+    total = 0
+    for msg in history:
+        total += _estimate_tokens(str(msg.get("content", "")))
+        total += 4  # rough per-message overhead
+    return total
+
+
+def chat_turn(
+    *,
+    client: Any,
+    model: str,
+    history: list[dict[str, Any]],
+    out: TextIO,
+) -> tuple[str, Metrics]:
+    """Run one streaming chat completion. Writes content to `out` as it arrives.
+    Returns the assembled assistant text and a populated Metrics."""
+    t0 = time.perf_counter()
+    t_first: float | None = None
+    pieces: list[str] = []
+    server_prompt: int | None = None
+    server_completion: int | None = None
+
+    stream = client.chat.completions.create(
+        model=model,
+        messages=history,
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+    try:
+        for chunk in stream:
+            if getattr(chunk, "usage", None) is not None:
+                server_prompt = getattr(chunk.usage, "prompt_tokens", None)
+                server_completion = getattr(chunk.usage, "completion_tokens", None)
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = chunk.choices[0].delta
+            content = getattr(delta, "content", None)
+            if content:
+                if t_first is None:
+                    t_first = time.perf_counter()
+                pieces.append(content)
+                out.write(content)
+                out.flush()
+    finally:
+        close = getattr(stream, "close", None)
+        if callable(close):
+            close()
+
+    t_end = time.perf_counter()
+    text = "".join(pieces)
+
+    if t_first is None:
+        t_first = t_end
+    ttft = t_first - t0
+    gen_seconds = max(0.0, t_end - t_first)
+
+    if server_prompt is not None:
+        prompt_tokens = server_prompt
+        prompt_estimated = False
+    else:
+        prompt_tokens = _estimate_prompt_tokens(history)
+        prompt_estimated = True
+
+    if server_completion is not None:
+        completion_tokens = server_completion
+        completion_estimated = False
+    else:
+        completion_tokens = _estimate_tokens(text)
+        completion_estimated = True
+
+    metrics = Metrics(
+        ttft_seconds=ttft,
+        generation_seconds=gen_seconds,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        prompt_tokens_estimated=prompt_estimated,
+        completion_tokens_estimated=completion_estimated,
+    )
+    return text, metrics
 
 
 def main() -> None:

@@ -5,7 +5,6 @@
 #     "openai>=1.40",
 #     "pyyaml>=6.0",
 #     "questionary>=2.0",
-#     "rich>=13.7",
 #     "tiktoken>=0.7",
 # ]
 # ///
@@ -394,7 +393,7 @@ def main() -> None:
                     print(f"✓ Added {new['model']} to {config_path}")
                     ans = _interactive_prompt("switch to it now? (y/N)").strip().lower()
                     if ans in ("y", "yes"):
-                        current = new
+                        current = {**new, "api_key": _expand_env(new["api_key"])}
                         client = make_client(current)
                         history = []
                         print(f"Switched to {current['model']}. History cleared.")

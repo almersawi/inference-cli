@@ -158,3 +158,62 @@ def test_main_ctrl_c_during_interactive_prompt_cancels_command_only(
 
     captured = capsys.readouterr().out
     assert "[cancelled]" in captured
+
+
+def test_main_add_then_switch_expands_env_var_in_api_key(
+    monkeypatch, tmp_path, capsys, fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    """Regression: /add → 'switch to it now? y' must expand ${ENV_VAR} in api_key
+    before constructing the OpenAI client. Otherwise the client gets the literal
+    '${MY_KEY}' string and every call fails auth."""
+    monkeypatch.setenv("MY_KEY", "expanded-secret")
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: existing\n"
+        "    base_url: http://x/v1\n"
+        "    api_key: k\n"
+    )
+    monkeypatch.setenv("INFERENCE_MODELS_CONFIG", str(config_path))
+
+    # Auto-pick the first (existing) model on initial start.
+    pick_calls = {"n": 0}
+    def fake_pick(models, **kw):
+        pick_calls["n"] += 1
+        return models[0]
+    monkeypatch.setattr(inference, "pick_model", fake_pick)
+
+    # Drive _interactive_prompt: model name, base_url, api_key (with env var ref),
+    # then 'y' for "switch to it now?".
+    interactive_answers = iter([
+        "newmodel",       # model
+        "http://y/v1",    # base_url
+        "${MY_KEY}",      # api_key as env var reference
+        "y",              # switch to it now?
+    ])
+    monkeypatch.setattr(
+        inference, "_interactive_prompt", lambda field: next(interactive_answers)
+    )
+
+    # Capture what api_key make_client receives.
+    seen = {}
+    def spy_make_client(entry):
+        seen["api_key"] = entry["api_key"]
+        return fake_client_factory([
+            make_chunk_fn(content="ok"),
+            make_chunk_fn(usage=fake_usage_cls(1, 1)),
+        ])
+    monkeypatch.setattr(inference, "make_client", spy_make_client)
+
+    # REPL inputs: /add, then /exit
+    inputs = iter(["/add", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+
+    inference.main()
+
+    # The api_key seen by make_client during the SWITCH must be the expanded value.
+    assert seen["api_key"] == "expanded-secret"
+    # And the on-disk YAML must still contain the unexpanded reference.
+    raw = config_path.read_text()
+    assert "${MY_KEY}" in raw
+    assert "expanded-secret" not in raw

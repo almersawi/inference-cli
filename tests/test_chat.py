@@ -89,3 +89,41 @@ def test_chat_turn_measures_ttft_before_first_content_chunk(
         out=io.StringIO(),
     )
     assert metrics.ttft_seconds >= 0.04
+
+
+def test_main_runs_one_chat_turn_then_exits(
+    monkeypatch, tmp_path, capsys, fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: m1\n"
+        "    base_url: http://a/v1\n"
+        "    api_key: k\n"
+    )
+    monkeypatch.setenv("INFERENCE_MODELS_CONFIG", str(config_path))
+
+    chunks = [
+        make_chunk_fn(content="hi"),
+        make_chunk_fn(content="!"),
+        make_chunk_fn(usage=fake_usage_cls(prompt_tokens=3, completion_tokens=2)),
+    ]
+    monkeypatch.setattr(
+        inference,
+        "make_client",
+        lambda entry: fake_client_factory(chunks),
+    )
+
+    # Auto-pick the first model.
+    monkeypatch.setattr(inference, "pick_model", lambda models, **kw: models[0])
+
+    # Drive the REPL: one user message, then /exit.
+    inputs = iter(["hello there", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+
+    inference.main()
+
+    captured = capsys.readouterr().out
+    assert "hi!" in captured
+    assert "TTFT:" in captured
+    assert "tok/s" in captured

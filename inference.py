@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -317,8 +318,139 @@ def make_client(model_entry: dict[str, Any]) -> Any:
     return OpenAI(base_url=model_entry["base_url"], api_key=model_entry["api_key"])
 
 
+def _config_path() -> Path:
+    override = os.environ.get("INFERENCE_MODELS_CONFIG")
+    if override:
+        return Path(override)
+    return Path(__file__).parent / "models.yaml"
+
+
+def _interactive_prompt(field: str) -> str:
+    import questionary
+    answer = questionary.text(f"{field}:").ask()
+    if answer is None:
+        raise KeyboardInterrupt
+    return answer
+
+
+def _select_or_bootstrap(config_path: Path) -> dict[str, Any]:
+    """Load config, run picker. If empty or user picks +add, run /add and re-pick."""
+    while True:
+        try:
+            models = load_config(config_path)
+        except ConfigError as e:
+            print(f"config error: {e}", file=sys.stderr)
+            sys.exit(1)
+        if not models:
+            print("No models configured. Let's add one.")
+            handle_add(prompt=_interactive_prompt, config_path=config_path)
+            continue
+        choice = pick_model(models)
+        if choice == ADD_SENTINEL:
+            handle_add(prompt=_interactive_prompt, config_path=config_path)
+            continue
+        return choice  # dict
+
+
 def main() -> None:
-    print("inference.py: bootstrap")
+    config_path = _config_path()
+    current = _select_or_bootstrap(config_path)
+    client = make_client(current)
+    history: list[dict[str, Any]] = []
+
+    print(f"Chatting with {current['model']}. Type /exit to quit.")
+    while True:
+        try:
+            line = input("You ▸ ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+
+        cmd = parse_command(line)
+        if cmd is not None:
+            name, args = cmd
+            if name == "exit":
+                return
+            if name == "clear":
+                history = handle_clear(history)
+                print("✓ History cleared.")
+                continue
+            if name == "system":
+                content = args or _interactive_prompt("system prompt").strip()
+                if content:
+                    history = handle_system(history, content)
+                    print("✓ System prompt set.")
+                continue
+            if name == "model":
+                current = _select_or_bootstrap(config_path)
+                client = make_client(current)
+                history = []
+                print(f"Switched to {current['model']}. History cleared.")
+                continue
+            if name == "add":
+                new = handle_add(prompt=_interactive_prompt, config_path=config_path)
+                print(f"✓ Added {new['model']} to {config_path}")
+                ans = _interactive_prompt("switch to it now? (y/N)").strip().lower()
+                if ans in ("y", "yes"):
+                    current = new
+                    client = make_client(current)
+                    history = []
+                    print(f"Switched to {current['model']}. History cleared.")
+                continue
+            if name == "remove":
+                try:
+                    models = load_config(config_path)
+                except ConfigError as e:
+                    print(f"[error] {e}")
+                    continue
+                if len(models) <= 1:
+                    print("[error] refusing to remove the last model in config")
+                    continue
+                choice = pick_model(models)
+                if choice == ADD_SENTINEL:
+                    continue  # user picked '+ add new model' — treat as cancel
+                target_name = choice["model"]
+                confirm = _interactive_prompt(
+                    f"remove '{target_name}' from {config_path}? (y/N)"
+                ).strip().lower()
+                if confirm not in ("y", "yes"):
+                    print("cancelled.")
+                    continue
+                try:
+                    handle_remove(model_name=target_name, config_path=config_path)
+                except ConfigError as e:
+                    print(f"[error] {e}")
+                    continue
+                print(f"✓ Removed {target_name}.")
+                if target_name == current["model"]:
+                    print("That was the active model. Returning to picker.")
+                    current = _select_or_bootstrap(config_path)
+                    client = make_client(current)
+                    history = []
+                continue
+            # unknown
+            print("Commands: /clear /model /system /add /remove /exit")
+            continue
+
+        if not line.strip():
+            continue
+
+        history.append({"role": "user", "content": line})
+        print("Assistant ▸ ", end="", flush=True)
+        try:
+            text, metrics = chat_turn(
+                client=client, model=current["model"], history=history, out=sys.stdout,
+            )
+        except KeyboardInterrupt:
+            print("\n[interrupted]")
+            continue
+        except Exception as e:  # API errors, connection errors
+            history.pop()  # roll back the user turn
+            print(f"\n[error] {e}")
+            continue
+        print()  # newline after streamed content
+        print(format_metrics(metrics))
+        history.append({"role": "assistant", "content": text})
 
 
 if __name__ == "__main__":

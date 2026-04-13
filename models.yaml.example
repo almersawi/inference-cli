@@ -1,0 +1,13 @@
+models:
+  - model: "meta-llama/Llama-3-8B-Instruct"
+    base_url: "http://localhost:8000/v1"
+    api_key: "sk-local"
+
+  - model: "qwen2.5-coder-7b"
+    base_url: "http://localhost:11434/v1"
+    api_key: "ollama"
+
+  # Use ${ENV_VAR} to pull api_key from the environment:
+  # - model: "claude-style-relay"
+  #   base_url: "http://localhost:9000/v1"
+  #   api_key: "${MY_LOCAL_KEY}"

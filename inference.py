@@ -29,6 +29,7 @@ from rich.console import Console, Group
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
 
 
@@ -454,6 +455,36 @@ def _run_bench_level(
         results = [f.result() for f in futures]
     wall_seconds = time.perf_counter() - t0
     return _aggregate_level(results, concurrency=concurrency, wall_seconds=wall_seconds)
+
+
+def _render_bench_table(console: Console, all_stats: list[LevelStats]) -> None:
+    """Print a Rich table summarizing benchmark results."""
+    table = Table(title="Benchmark Results", border_style="cyan")
+    table.add_column("Concurrency", justify="right", style="bold")
+    table.add_column("TTFT mean", justify="right")
+    table.add_column("TTFT p99", justify="right")
+    table.add_column("Tok/s/user", justify="right")
+    table.add_column("Total tok/s", justify="right")
+    table.add_column("E2E lat mean", justify="right")
+    table.add_column("Req/s", justify="right")
+    table.add_column("Errors", justify="right")
+
+    for s in all_stats:
+        err_style = "red" if s.error_count > 0 else ""
+        table.add_row(
+            str(s.concurrency),
+            f"{s.ttft_mean * 1000:.0f}ms",
+            f"{s.ttft_p99 * 1000:.0f}ms",
+            f"{s.tps_mean:.1f}",
+            f"{s.total_throughput:.1f}",
+            f"{s.e2e_mean * 1000:.0f}ms",
+            f"{s.requests_per_sec:.1f}",
+            f"[{err_style}]{s.error_count}/{s.total_count}[/{err_style}]"
+            if err_style else f"{s.error_count}/{s.total_count}",
+        )
+
+    console.print()
+    console.print(table)
 
 
 def chat_turn(

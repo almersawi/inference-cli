@@ -196,3 +196,26 @@ def test_run_bench_level_records_partial_failures(monkeypatch):
     )
     assert stats.total_count == 4
     assert stats.error_count == 2
+
+
+def test_render_bench_table_outputs_rich_table():
+    import io as _io
+    from rich.console import Console
+    console = Console(file=_io.StringIO(), force_terminal=True, width=120)
+    stats = [
+        inference.LevelStats(
+            concurrency=1, ttft_mean=0.1, ttft_p99=0.15,
+            tps_mean=50.0, total_throughput=50.0, e2e_mean=1.0,
+            requests_per_sec=1.0, error_count=0, total_count=1,
+        ),
+        inference.LevelStats(
+            concurrency=4, ttft_mean=0.2, ttft_p99=0.35,
+            tps_mean=45.0, total_throughput=170.0, e2e_mean=1.2,
+            requests_per_sec=3.5, error_count=1, total_count=4,
+        ),
+    ]
+    inference._render_bench_table(console, stats)
+    output = console.file.getvalue()
+    assert "1" in output
+    assert "4" in output
+    assert "Benchmark Results" in output

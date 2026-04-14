@@ -346,6 +346,94 @@ def _bench_single_request(
     )
 
 
+@dataclass
+class LevelStats:
+    concurrency: int
+    ttft_mean: float = 0.0
+    ttft_median: float = 0.0
+    ttft_min: float = 0.0
+    ttft_max: float = 0.0
+    ttft_p95: float = 0.0
+    ttft_p99: float = 0.0
+    tps_mean: float = 0.0
+    tps_median: float = 0.0
+    tps_min: float = 0.0
+    tps_max: float = 0.0
+    tps_p95: float = 0.0
+    tps_p99: float = 0.0
+    e2e_mean: float = 0.0
+    e2e_median: float = 0.0
+    e2e_min: float = 0.0
+    e2e_max: float = 0.0
+    total_throughput: float = 0.0
+    requests_per_sec: float = 0.0
+    error_count: int = 0
+    total_count: int = 0
+
+
+def _percentile(sorted_vals: list[float], p: float) -> float:
+    """Compute the p-th percentile (0-100) from a sorted list."""
+    if not sorted_vals:
+        return 0.0
+    k = (len(sorted_vals) - 1) * (p / 100.0)
+    f = int(k)
+    c = f + 1
+    if c >= len(sorted_vals):
+        return sorted_vals[-1]
+    return sorted_vals[f] + (k - f) * (sorted_vals[c] - sorted_vals[f])
+
+
+def _aggregate_level(
+    results: list[BenchResult], *, concurrency: int, wall_seconds: float
+) -> LevelStats:
+    """Compute aggregate statistics for one concurrency level."""
+    import statistics as st
+
+    ok = [r for r in results if r.error is None]
+    total_count = len(results)
+    error_count = total_count - len(ok)
+
+    if not ok:
+        return LevelStats(
+            concurrency=concurrency,
+            error_count=error_count,
+            total_count=total_count,
+        )
+
+    ttfts = sorted(r.ttft_seconds for r in ok)
+    tps_list = sorted(
+        r.completion_tokens / r.generation_seconds
+        if r.generation_seconds > 0 else 0.0
+        for r in ok
+    )
+    e2e_list = sorted(r.ttft_seconds + r.generation_seconds for r in ok)
+    total_tokens = sum(r.completion_tokens for r in ok)
+
+    return LevelStats(
+        concurrency=concurrency,
+        ttft_mean=st.mean(ttfts),
+        ttft_median=st.median(ttfts),
+        ttft_min=ttfts[0],
+        ttft_max=ttfts[-1],
+        ttft_p95=_percentile(ttfts, 95),
+        ttft_p99=_percentile(ttfts, 99),
+        tps_mean=st.mean(tps_list),
+        tps_median=st.median(tps_list),
+        tps_min=tps_list[0],
+        tps_max=tps_list[-1],
+        tps_p95=_percentile(tps_list, 95),
+        tps_p99=_percentile(tps_list, 99),
+        e2e_mean=st.mean(e2e_list),
+        e2e_median=st.median(e2e_list),
+        e2e_min=e2e_list[0],
+        e2e_max=e2e_list[-1],
+        total_throughput=total_tokens / wall_seconds if wall_seconds > 0 else 0.0,
+        requests_per_sec=len(ok) / wall_seconds if wall_seconds > 0 else 0.0,
+        error_count=error_count,
+        total_count=total_count,
+    )
+
+
 def chat_turn(
     *,
     client: Any,

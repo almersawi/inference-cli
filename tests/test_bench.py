@@ -115,3 +115,48 @@ def test_bench_single_request_sets_max_tokens(
     )
     kwargs = client.chat.completions.last_kwargs
     assert kwargs["max_tokens"] == 256
+
+
+def test_aggregate_level_computes_stats():
+    results = [
+        inference.BenchResult(ttft_seconds=0.1, generation_seconds=1.0, completion_tokens=50),
+        inference.BenchResult(ttft_seconds=0.2, generation_seconds=2.0, completion_tokens=100),
+        inference.BenchResult(ttft_seconds=0.3, generation_seconds=1.5, completion_tokens=75),
+    ]
+    stats = inference._aggregate_level(results, concurrency=3, wall_seconds=2.5)
+    assert stats.concurrency == 3
+    assert stats.total_count == 3
+    assert stats.error_count == 0
+    # Mean TTFT = (0.1 + 0.2 + 0.3) / 3 = 0.2
+    assert abs(stats.ttft_mean - 0.2) < 0.01
+    # Median TTFT = 0.2
+    assert abs(stats.ttft_median - 0.2) < 0.01
+    assert abs(stats.ttft_min - 0.1) < 0.01
+    assert abs(stats.ttft_max - 0.3) < 0.01
+    # Total throughput = (50 + 100 + 75) / 2.5 = 90
+    assert abs(stats.total_throughput - 90.0) < 1.0
+    # Requests/sec = 3 / 2.5 = 1.2
+    assert abs(stats.requests_per_sec - 1.2) < 0.1
+
+
+def test_aggregate_level_handles_errors():
+    results = [
+        inference.BenchResult(ttft_seconds=0.1, generation_seconds=1.0, completion_tokens=50),
+        inference.BenchResult(error="ConnectionError: refused"),
+    ]
+    stats = inference._aggregate_level(results, concurrency=2, wall_seconds=1.5)
+    assert stats.total_count == 2
+    assert stats.error_count == 1
+    # Stats computed from the 1 successful result only
+    assert abs(stats.ttft_mean - 0.1) < 0.01
+
+
+def test_aggregate_level_all_errors():
+    results = [
+        inference.BenchResult(error="err1"),
+        inference.BenchResult(error="err2"),
+    ]
+    stats = inference._aggregate_level(results, concurrency=2, wall_seconds=1.0)
+    assert stats.error_count == 2
+    assert stats.ttft_mean == 0.0
+    assert stats.tps_mean == 0.0

@@ -7,6 +7,7 @@
 #     "questionary>=2.0",
 #     "rich>=13.7",
 #     "tiktoken>=0.7",
+#     "plotext>=5.2",
 # ]
 # ///
 """CLI for chatting with locally deployed OpenAI-compatible LLMs."""
@@ -118,7 +119,7 @@ def _info(console: Console, message: str) -> None:
 
 def _help_line(console: Console) -> None:
     console.print(
-        "Commands: /clear /model /system /add /remove /exit", style="dim"
+        "Commands: /clear /model /system /add /remove /bench /exit", style="dim"
     )
 
 
@@ -326,7 +327,7 @@ def chat_turn(
     return text, metrics
 
 
-KNOWN_COMMANDS = {"clear", "exit", "model", "system", "add", "remove"}
+KNOWN_COMMANDS = {"clear", "exit", "model", "system", "add", "remove", "bench"}
 
 
 def parse_command(line: str) -> tuple[str, str] | None:

@@ -284,6 +284,68 @@ def _generate_bench_prompt(target_tokens: int) -> str:
     return prompt.strip()
 
 
+@dataclass
+class BenchResult:
+    ttft_seconds: float = 0.0
+    generation_seconds: float = 0.0
+    completion_tokens: int = 0
+    error: str | None = None
+
+
+def _bench_single_request(
+    *, client: Any, model: str, prompt: str, max_tokens: int
+) -> BenchResult:
+    """Run a single streaming request for benchmarking. Returns timing metrics."""
+    t0 = time.perf_counter()
+    t_first: float | None = None
+    server_completion: int | None = None
+    pieces: list[str] = []
+
+    try:
+        stream = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            stream=True,
+            max_tokens=max_tokens,
+            stream_options={"include_usage": True},
+        )
+        try:
+            for chunk in stream:
+                if getattr(chunk, "usage", None) is not None:
+                    server_completion = getattr(chunk.usage, "completion_tokens", None)
+                if not getattr(chunk, "choices", None):
+                    continue
+                delta = chunk.choices[0].delta
+                content = getattr(delta, "content", None)
+                if content:
+                    if t_first is None:
+                        t_first = time.perf_counter()
+                    pieces.append(content)
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
+    except Exception as e:
+        return BenchResult(error=f"{type(e).__name__}: {e}")
+
+    t_end = time.perf_counter()
+    if t_first is None:
+        t_first = t_end
+    ttft = t_first - t0
+    gen_seconds = max(0.0, t_end - t_first)
+
+    if server_completion is not None:
+        completion_tokens = server_completion
+    else:
+        completion_tokens = _estimate_tokens("".join(pieces))
+
+    return BenchResult(
+        ttft_seconds=ttft,
+        generation_seconds=gen_seconds,
+        completion_tokens=completion_tokens,
+    )
+
+
 def chat_turn(
     *,
     client: Any,

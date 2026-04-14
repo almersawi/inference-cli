@@ -247,6 +247,43 @@ def _estimate_prompt_tokens(history: list[dict[str, Any]]) -> int:
     return total
 
 
+def parse_bench_args(args: str) -> tuple[int, int, list[int]]:
+    """Parse /bench arguments: [input_tokens] [output_tokens] [concurrency_levels].
+    Returns (input_tokens, output_tokens, concurrency_levels)."""
+    _DEFAULT_LEVELS = [1, 2, 4, 8, 16, 32, 64, 128]
+    parts = args.strip().split()
+    if not parts:
+        return 128, 128, _DEFAULT_LEVELS
+    try:
+        input_tok = int(parts[0])
+    except ValueError:
+        raise ValueError(f"invalid input_tokens: {parts[0]!r}")
+    output_tok = int(parts[1]) if len(parts) > 1 else 128
+    if len(parts) > 2:
+        levels = [int(x) for x in parts[2].split(",")]
+    else:
+        levels = _DEFAULT_LEVELS
+    return input_tok, output_tok, levels
+
+
+def _generate_bench_prompt(target_tokens: int) -> str:
+    """Generate a filler prompt of approximately `target_tokens` tokens."""
+    filler = (
+        "The quick brown fox jumps over the lazy dog. "
+        "Pack my box with five dozen liquor jugs. "
+    )
+    filler_tok = _estimate_tokens(filler)
+    if filler_tok == 0:
+        filler_tok = 1
+    reps = max(1, target_tokens // filler_tok)
+    prompt = filler * reps
+    actual = _estimate_tokens(prompt)
+    while actual > target_tokens and len(prompt) > len(filler):
+        prompt = prompt[: -len(filler)]
+        actual = _estimate_tokens(prompt)
+    return prompt.strip()
+
+
 def chat_turn(
     *,
     client: Any,

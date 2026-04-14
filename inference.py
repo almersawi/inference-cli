@@ -548,6 +548,37 @@ def _render_bench_charts(all_stats: list[LevelStats]) -> None:
     print()
 
 
+def handle_bench(
+    *, client: Any, model: str, args: str, console: Console
+) -> None:
+    """Run the benchmark across concurrency levels and display results."""
+    try:
+        input_tokens, output_tokens, levels = parse_bench_args(args)
+    except ValueError as e:
+        _error(console, f"invalid /bench arguments: {e}")
+        return
+
+    prompt = _generate_bench_prompt(input_tokens)
+    all_stats: list[LevelStats] = []
+
+    with console.status("") as status:
+        for i, conc in enumerate(levels, 1):
+            status.update(
+                f"Benchmarking: {conc} concurrent ({i}/{len(levels)} levels)"
+            )
+            stats = _run_bench_level(
+                client=client,
+                model=model,
+                prompt=prompt,
+                max_tokens=output_tokens,
+                concurrency=conc,
+            )
+            all_stats.append(stats)
+
+    _render_bench_table(console, all_stats)
+    _render_bench_charts(all_stats)
+
+
 def chat_turn(
     *,
     client: Any,
@@ -852,6 +883,14 @@ def main() -> None:
                         disable_thinking = _ask_disable_thinking()
                         history = []
                         _welcome_banner(_console, current["model"], disable_thinking=disable_thinking)
+                    continue
+                if name == "bench":
+                    handle_bench(
+                        client=client,
+                        model=current["model"],
+                        args=args,
+                        console=_console,
+                    )
                     continue
                 # unknown
                 _help_line(_console)

@@ -239,3 +239,62 @@ def test_render_bench_charts_does_not_raise():
     ]
     # Should run without error
     inference._render_bench_charts(stats)
+
+
+def test_handle_bench_runs_all_levels(monkeypatch):
+    """Integration: handle_bench calls _run_bench_level for each concurrency level."""
+    import io as _io
+    from rich.console import Console
+    console = Console(file=_io.StringIO(), force_terminal=True, width=120)
+    levels_seen = []
+
+    def fake_run_level(*, client, model, prompt, max_tokens, concurrency):
+        levels_seen.append(concurrency)
+        return inference.LevelStats(
+            concurrency=concurrency,
+            ttft_mean=0.1, ttft_p99=0.15, ttft_median=0.1,
+            ttft_min=0.05, ttft_max=0.2, ttft_p95=0.14,
+            tps_mean=50.0, tps_p99=55.0, tps_median=50.0,
+            tps_min=40.0, tps_max=60.0, tps_p95=54.0,
+            e2e_mean=1.0, e2e_median=1.0, e2e_min=0.8, e2e_max=1.2,
+            total_throughput=50.0 * concurrency,
+            requests_per_sec=float(concurrency),
+            error_count=0, total_count=concurrency,
+        )
+
+    monkeypatch.setattr(inference, "_run_bench_level", fake_run_level)
+    monkeypatch.setattr(inference, "_render_bench_charts", lambda stats: None)
+
+    inference.handle_bench(
+        client=None, model="m", args="64 64 1,4,8", console=console
+    )
+    assert levels_seen == [1, 4, 8]
+
+
+def test_main_bench_command_integration(
+    monkeypatch, tmp_path, capsys, fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    """Integration: /bench in the REPL dispatches handle_bench."""
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text(
+        "models:\n"
+        "  - model: m1\n"
+        "    base_url: http://a/v1\n"
+        "    api_key: k\n"
+    )
+    monkeypatch.setenv("INFERENCE_MODELS_CONFIG", str(config_path))
+    monkeypatch.setattr(inference, "pick_model", lambda models, **kw: models[0])
+    monkeypatch.setattr(inference, "_ask_disable_thinking", lambda: False)
+
+    bench_called = {"called": False}
+
+    def fake_handle_bench(*, client, model, args, console):
+        bench_called["called"] = True
+
+    monkeypatch.setattr(inference, "handle_bench", fake_handle_bench)
+
+    inputs = iter(["/bench 64 64 1,2", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+
+    inference.main()
+    assert bench_called["called"] is True

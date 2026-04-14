@@ -120,7 +120,7 @@ def test_main_runs_one_chat_turn_then_exits(
 
     # Drive the REPL: one user message, then /exit.
     inputs = iter(["hello there", "/exit"])
-    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+    monkeypatch.setattr(inference, "pt_prompt", lambda *a, **kw: next(inputs))
 
     inference.main()
 
@@ -154,7 +154,7 @@ def test_main_ctrl_c_during_interactive_prompt_cancels_command_only(
 
     # Drive the REPL: type /add (will trigger the cancelling prompt), then /exit.
     inputs = iter(["/add", "/exit"])
-    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+    monkeypatch.setattr(inference, "pt_prompt", lambda *a, **kw: next(inputs))
 
     inference.main()  # should NOT raise
 
@@ -210,7 +210,7 @@ def test_main_add_then_switch_expands_env_var_in_api_key(
 
     # REPL inputs: /add, then /exit
     inputs = iter(["/add", "/exit"])
-    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+    monkeypatch.setattr(inference, "pt_prompt", lambda *a, **kw: next(inputs))
 
     inference.main()
 
@@ -290,7 +290,7 @@ def test_main_disable_thinking_yes_passes_extra_body_to_chat_turn(
     monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "y")
 
     inputs = iter(["hi", "/exit"])
-    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+    monkeypatch.setattr(inference, "pt_prompt", lambda *a, **kw: next(inputs))
 
     inference.main()
 
@@ -330,7 +330,7 @@ def test_main_disable_thinking_no_omits_extra_body(
     monkeypatch.setattr(inference, "_interactive_prompt", lambda field: "")
 
     inputs = iter(["hi", "/exit"])
-    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+    monkeypatch.setattr(inference, "pt_prompt", lambda *a, **kw: next(inputs))
 
     inference.main()
 

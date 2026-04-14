@@ -17,14 +17,14 @@ def test_parse_bench_args_defaults():
     input_tok, output_tok, levels = inference.parse_bench_args("")
     assert input_tok == 128
     assert output_tok == 128
-    assert levels == [1, 2, 4, 8, 16, 32, 64, 128]
+    assert levels == [1, 2] + list(range(4, 129, 2))
 
 
 def test_parse_bench_args_custom_tokens():
     input_tok, output_tok, levels = inference.parse_bench_args("256 512")
     assert input_tok == 256
     assert output_tok == 512
-    assert levels == [1, 2, 4, 8, 16, 32, 64, 128]
+    assert levels == [1, 2] + list(range(4, 129, 2))
 
 
 def test_parse_bench_args_custom_levels():
@@ -294,7 +294,7 @@ def test_main_bench_command_integration(
     monkeypatch.setattr(inference, "handle_bench", fake_handle_bench)
 
     inputs = iter(["/bench 64 64 1,2", "/exit"])
-    monkeypatch.setattr("builtins.input", lambda *a, **kw: next(inputs))
+    monkeypatch.setattr(inference, "pt_prompt", lambda *a, **kw: next(inputs))
 
     inference.main()
     assert bench_called["called"] is True

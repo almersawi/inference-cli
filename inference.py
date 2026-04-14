@@ -25,6 +25,8 @@ from typing import Any, Callable, TextIO
 
 import yaml
 from openai import OpenAI
+from prompt_toolkit import prompt as pt_prompt
+from prompt_toolkit.completion import Completer, Completion
 from rich.console import Console, Group
 from rich.live import Live
 from rich.markdown import Markdown
@@ -252,7 +254,7 @@ def _estimate_prompt_tokens(history: list[dict[str, Any]]) -> int:
 def parse_bench_args(args: str) -> tuple[int, int, list[int]]:
     """Parse /bench arguments: [input_tokens] [output_tokens] [concurrency_levels].
     Returns (input_tokens, output_tokens, concurrency_levels)."""
-    _DEFAULT_LEVELS = [1, 2, 4, 8, 16, 32, 64, 128]
+    _DEFAULT_LEVELS = [1, 2] + list(range(4, 129, 2))
     parts = args.strip().split()
     if not parts:
         return 128, 128, _DEFAULT_LEVELS
@@ -488,13 +490,15 @@ def _render_bench_table(console: Console, all_stats: list[LevelStats]) -> None:
 
 
 def _render_bench_charts(all_stats: list[LevelStats]) -> None:
-    """Render 4 plotext bar charts to the terminal."""
+    """Render 4 bar charts to the terminal."""
     import plotext as plt
 
     labels = [str(s.concurrency) for s in all_stats]
+    width, height = 60, 15
 
-    # 1. TTFT vs Concurrency (mean and p99)
+    # 1. TTFT vs Concurrency (mean + p99)
     plt.clear_figure()
+    plt.plotsize(width, height)
     plt.theme("dark")
     plt.multiple_bar(
         labels,
@@ -512,6 +516,7 @@ def _render_bench_charts(all_stats: list[LevelStats]) -> None:
 
     # 2. Token/s per user vs Concurrency
     plt.clear_figure()
+    plt.plotsize(width, height)
     plt.theme("dark")
     plt.bar(labels, [s.tps_mean for s in all_stats])
     plt.title("Token/s per User vs Concurrency")
@@ -522,6 +527,7 @@ def _render_bench_charts(all_stats: list[LevelStats]) -> None:
 
     # 3. Total throughput vs Concurrency
     plt.clear_figure()
+    plt.plotsize(width, height)
     plt.theme("dark")
     plt.bar(labels, [s.total_throughput for s in all_stats])
     plt.title("Total Throughput vs Concurrency (tok/s)")
@@ -530,8 +536,9 @@ def _render_bench_charts(all_stats: list[LevelStats]) -> None:
     plt.show()
     print()
 
-    # 4. E2E Latency vs Concurrency (mean and max)
+    # 4. E2E Latency vs Concurrency (mean + max)
     plt.clear_figure()
+    plt.plotsize(width, height)
     plt.theme("dark")
     plt.multiple_bar(
         labels,
@@ -662,21 +669,72 @@ def chat_turn(
 KNOWN_COMMANDS = {"clear", "exit", "model", "system", "add", "remove", "bench"}
 
 
+_COMMAND_DESCRIPTIONS = {
+    "clear": "Clear conversation history",
+    "model": "Switch to a different model",
+    "system": "Set or replace system prompt",
+    "add": "Add a new model to config",
+    "remove": "Remove a model from config",
+    "bench": "Benchmark the current model",
+    "exit": "Exit the CLI",
+}
+
+
+class _CommandCompleter(Completer):
+    """Show slash-command completions as soon as '/' is typed."""
+
+    def get_completions(self, document, complete_event):
+        text = document.text
+        if not text.startswith("/"):
+            return
+        word = text[1:].lstrip()
+        for cmd, desc in _COMMAND_DESCRIPTIONS.items():
+            if cmd.startswith(word):
+                yield Completion(
+                    f"/{cmd}",
+                    start_position=-len(text),
+                    display_meta=desc,
+                )
+
+
+_command_completer = _CommandCompleter()
+
+
 def parse_command(line: str) -> tuple[str, str] | None:
     """Returns (command_name, args) for known commands,
     ('__unknown__', raw_word) for unknown /commands,
+    ('__pick__', '') when bare '/' triggers the command picker,
     or None for non-command input."""
     if not line or not line.startswith("/"):
         return None
     body = line[1:].strip()
     if not body:
-        return ("__unknown__", "")
+        return ("__pick__", "")
     parts = body.split(maxsplit=1)
     name = parts[0].lower()
     args = parts[1] if len(parts) > 1 else ""
     if name in KNOWN_COMMANDS:
         return (name, args)
     return ("__unknown__", parts[0])
+
+
+def _pick_command(
+    *,
+    _select: Callable[[str, list[str]], str] | None = None,
+) -> str | None:
+    """Show arrow-key picker for slash commands. Returns command name or None."""
+    if _select is None:
+        import questionary
+        def _select(message: str, choices: list[str]) -> str:
+            return questionary.select(
+                message, choices=choices, style=_picker_style
+            ).ask()
+
+    labels = [f"/{name}  — {desc}" for name, desc in _COMMAND_DESCRIPTIONS.items()]
+    choice = _select("Select a command:", labels)
+    if choice is None:
+        return None
+    return choice.split()[0][1:]  # extract "name" from "/name  — description"
 
 
 def handle_clear(history: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -810,7 +868,7 @@ def main() -> None:
     _welcome_banner(_console, current["model"], disable_thinking=disable_thinking)
     while True:
         try:
-            line = input("You ▸ ")
+            line = pt_prompt("You ▸ ", completer=_command_completer)
         except (EOFError, KeyboardInterrupt):
             print()
             return
@@ -819,6 +877,12 @@ def main() -> None:
         if cmd is not None:
             try:
                 name, args = cmd
+                if name == "__pick__":
+                    picked = _pick_command()
+                    if picked is None:
+                        _cancelled(_console)
+                        continue
+                    name, args = picked, ""
                 if name == "exit":
                     return
                 if name == "clear":

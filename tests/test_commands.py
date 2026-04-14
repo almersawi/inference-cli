@@ -27,6 +27,22 @@ def test_parse_command_unknown_returns_unknown_marker():
     assert inference.parse_command("/wat") == ("__unknown__", "wat")
 
 
+def test_parse_command_bare_slash_returns_pick():
+    assert inference.parse_command("/") == ("__pick__", "")
+
+
+def test_pick_command_returns_selected_command():
+    def fake_select(message, choices):
+        return "/clear  — Clear conversation history"
+    assert inference._pick_command(_select=fake_select) == "clear"
+
+
+def test_pick_command_returns_none_on_cancel():
+    def fake_select(message, choices):
+        return None
+    assert inference._pick_command(_select=fake_select) is None
+
+
 def test_handle_clear_drops_user_and_assistant_keeps_system():
     history = [
         {"role": "system", "content": "be brief"},

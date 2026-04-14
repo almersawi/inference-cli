@@ -11,7 +11,7 @@ Works with any OpenAI-compatible endpoint: **vLLM**, **llama.cpp**, **Ollama**, 
 - **Real-time metrics** — TTFT, token/s, token counts on every response
 - **Benchmark mode** — stress-test models across concurrency levels with terminal charts
 - **Thinking mode toggle** — disable reasoning for models that support it (e.g., Qwen3)
-- **Slash commands** — `/clear`, `/model`, `/system`, `/add`, `/remove`, `/bench`, `/exit`
+- **Slash commands with autocomplete** — type `/` to see all commands in a dropdown
 - **Environment variable secrets** — use `${ENV_VAR}` in `api_key` fields
 
 ## Requirements
@@ -94,12 +94,14 @@ $ inference
 │ thinking: disabled                  │
 ╰─────────────────────────────────────╯
 
-You > What is the capital of France?
-Assistant > The capital of France is **Paris**.
+You ▸ What is the capital of France?
+Assistant ▸ The capital of France is **Paris**.
 ⏱ TTFT: 45ms · 82.3 tok/s · in: 12 · out: 8
 ```
 
 ### Commands
+
+Type `/` to see all available commands in a real-time autocomplete dropdown, or type the full command directly:
 
 | Command | Description |
 |---------|-------------|
@@ -116,19 +118,23 @@ Assistant > The capital of France is **Paris**.
 Stress-test your model across concurrency levels:
 
 ```
-You > /bench
+You ▸ /bench
 ```
 
 With custom parameters:
 
 ```
-You > /bench 256 512              # 256 input tokens, 512 output tokens
-You > /bench 128 128 1,4,16,64   # Custom concurrency levels
+You ▸ /bench 256 512              # 256 input tokens, 512 output tokens
+You ▸ /bench 128 128 1,4,16,64   # Custom concurrency levels
 ```
 
-**Default:** 128 input tokens, 128 output tokens, concurrency levels 1, 2, 4, 8, 16, 32, 64, 128.
+**Default:** 128 input tokens, 128 output tokens, concurrency levels 1, 2, 4, 6, 8, 10, ..., 128 (stepping by 2).
 
-Outputs a summary table and terminal charts showing TTFT, token/s per user, total throughput, and end-to-end latency across concurrency levels.
+Outputs a summary table and 4 bar charts showing:
+- **TTFT** (time to first token) — mean and p99
+- **Token/s per user** — mean throughput per request
+- **Total throughput** — aggregate tok/s across all concurrent requests
+- **E2E latency** — mean and max end-to-end response time
 
 ## License
 

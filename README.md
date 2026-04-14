@@ -1,4 +1,4 @@
-# inference
+# Inference CLI
 
 A frictionless CLI for chatting with locally deployed OpenAI-compatible LLMs. Single file, zero config, real-time performance metrics.
 

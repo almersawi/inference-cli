@@ -219,3 +219,23 @@ def test_render_bench_table_outputs_rich_table():
     assert "1" in output
     assert "4" in output
     assert "Benchmark Results" in output
+
+
+def test_render_bench_charts_does_not_raise():
+    """Smoke test: rendering charts with valid data should not error."""
+    stats = [
+        inference.LevelStats(
+            concurrency=1, ttft_mean=0.1, ttft_p99=0.15,
+            tps_mean=50.0,
+            total_throughput=50.0, e2e_mean=1.0,
+            requests_per_sec=1.0, error_count=0, total_count=1,
+        ),
+        inference.LevelStats(
+            concurrency=4, ttft_mean=0.2, ttft_p99=0.35,
+            tps_mean=45.0,
+            total_throughput=170.0, e2e_mean=1.2,
+            requests_per_sec=3.5, error_count=0, total_count=4,
+        ),
+    ]
+    # Should run without error
+    inference._render_bench_charts(stats)

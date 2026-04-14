@@ -487,6 +487,67 @@ def _render_bench_table(console: Console, all_stats: list[LevelStats]) -> None:
     console.print(table)
 
 
+def _render_bench_charts(all_stats: list[LevelStats]) -> None:
+    """Render 4 plotext bar charts to the terminal."""
+    import plotext as plt
+
+    labels = [str(s.concurrency) for s in all_stats]
+
+    # 1. TTFT vs Concurrency (mean and p99)
+    plt.clear_figure()
+    plt.theme("dark")
+    plt.multiple_bar(
+        labels,
+        [
+            [s.ttft_mean * 1000 for s in all_stats],
+            [s.ttft_p99 * 1000 for s in all_stats],
+        ],
+        labels=["mean", "p99"],
+    )
+    plt.title("TTFT vs Concurrency (ms)")
+    plt.xlabel("Concurrency")
+    plt.ylabel("TTFT (ms)")
+    plt.show()
+    print()
+
+    # 2. Token/s per user vs Concurrency
+    plt.clear_figure()
+    plt.theme("dark")
+    plt.bar(labels, [s.tps_mean for s in all_stats])
+    plt.title("Token/s per User vs Concurrency")
+    plt.xlabel("Concurrency")
+    plt.ylabel("Tok/s")
+    plt.show()
+    print()
+
+    # 3. Total throughput vs Concurrency
+    plt.clear_figure()
+    plt.theme("dark")
+    plt.bar(labels, [s.total_throughput for s in all_stats])
+    plt.title("Total Throughput vs Concurrency (tok/s)")
+    plt.xlabel("Concurrency")
+    plt.ylabel("Tok/s")
+    plt.show()
+    print()
+
+    # 4. E2E Latency vs Concurrency (mean and max)
+    plt.clear_figure()
+    plt.theme("dark")
+    plt.multiple_bar(
+        labels,
+        [
+            [s.e2e_mean * 1000 for s in all_stats],
+            [s.e2e_max * 1000 for s in all_stats],
+        ],
+        labels=["mean", "max"],
+    )
+    plt.title("E2E Latency vs Concurrency (ms)")
+    plt.xlabel("Concurrency")
+    plt.ylabel("Latency (ms)")
+    plt.show()
+    print()
+
+
 def chat_turn(
     *,
     client: Any,

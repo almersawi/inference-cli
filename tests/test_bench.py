@@ -160,3 +160,39 @@ def test_aggregate_level_all_errors():
     assert stats.error_count == 2
     assert stats.ttft_mean == 0.0
     assert stats.tps_mean == 0.0
+
+
+def test_run_bench_level_fires_concurrent_requests(
+    fake_client_factory, make_chunk_fn, fake_usage_cls
+):
+    chunks = [
+        make_chunk_fn(content="ok"),
+        make_chunk_fn(usage=fake_usage_cls(prompt_tokens=5, completion_tokens=10)),
+    ]
+    client = fake_client_factory(chunks)
+    stats = inference._run_bench_level(
+        client=client, model="m", prompt="test", max_tokens=64, concurrency=4
+    )
+    assert stats.concurrency == 4
+    assert stats.total_count == 4
+    assert stats.error_count == 0
+    assert stats.total_throughput > 0
+
+
+def test_run_bench_level_records_partial_failures(monkeypatch):
+    call_count = {"n": 0}
+
+    def flaky_bench(**kwargs):
+        call_count["n"] += 1
+        if call_count["n"] % 2 == 0:
+            return inference.BenchResult(error="boom")
+        return inference.BenchResult(
+            ttft_seconds=0.1, generation_seconds=0.5, completion_tokens=20
+        )
+
+    monkeypatch.setattr(inference, "_bench_single_request", lambda **kw: flaky_bench(**kw))
+    stats = inference._run_bench_level(
+        client=None, model="m", prompt="test", max_tokens=64, concurrency=4
+    )
+    assert stats.total_count == 4
+    assert stats.error_count == 2

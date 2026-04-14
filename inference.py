@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
@@ -432,6 +433,27 @@ def _aggregate_level(
         error_count=error_count,
         total_count=total_count,
     )
+
+
+def _run_bench_level(
+    *, client: Any, model: str, prompt: str, max_tokens: int, concurrency: int
+) -> LevelStats:
+    """Fire `concurrency` parallel requests and return aggregated stats."""
+    t0 = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [
+            pool.submit(
+                _bench_single_request,
+                client=client,
+                model=model,
+                prompt=prompt,
+                max_tokens=max_tokens,
+            )
+            for _ in range(concurrency)
+        ]
+        results = [f.result() for f in futures]
+    wall_seconds = time.perf_counter() - t0
+    return _aggregate_level(results, concurrency=concurrency, wall_seconds=wall_seconds)
 
 
 def chat_turn(
